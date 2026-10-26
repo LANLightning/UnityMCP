@@ -1,0 +1,981 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.unitymcp-bridge/protocol.schema.json",
+  "title": "UnityMCP Bridge Protocol",
+  "description": "Wire protocol for the UnityMCP Editor bridge. Line-delimited JSON over TCP (one JSON object per line, terminated by LF). Version is the single source of truth: both C# and TypeScript sides derive their ProtocolVersion constant from this field.",
+  "protocolVersion": "1.10.0",
+  "type": "object",
+  "$defs": {
+    "RequestEnvelope": {
+      "type": "object",
+      "required": ["id", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Correlation UUID; the response must echo this value."
+        },
+        "command": {
+          "type": "string",
+          "enum": [
+            "EnterPlaymode",
+            "ExitPlaymode",
+            "RunEditMethod",
+            "GetSceneState",
+            "CaptureScreenshot",
+            "TailEditorLog",
+            "QueryGameObject",
+            "Handshake",
+            "OpenScene",
+            "RefreshAssets",
+            "PingObject",
+            "SetGameViewSize",
+            "WaitForIdle",
+            "LuaReloadModule",
+            "CsharpReloadScripts",
+            "GetPlayState",
+            "GetCompileStatus",
+            "LuaEval",
+            "StartVerificationSession",
+            "EndVerificationSession",
+            "ListUINodes",
+            "ResolveLocalization",
+            "OpenPanel",
+            "SimulateClick",
+            "SimulateKey",
+            "SetInputText",
+            "GetVerificationSessionState",
+            "ObserveCamera",
+            "ListEntities",
+            "ObserveEntity",
+            "ListEffects",
+            "ObserveEffect",
+            "ObserveWindow",
+            "OperateCamera",
+            "ProfilerCapabilities",
+            "ProfilerSample",
+            "MemorySnapshot",
+            "BridgeChallenge",
+            "BridgeControl"
+          ]
+        },
+        "args": {
+          "type": "object",
+          "description": "Command-specific arguments object. May be omitted or empty ({}) for commands that take no arguments."
+        }
+      }
+    },
+    "ResponseEnvelope": {
+      "type": "object",
+      "required": ["id", "ok"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "ok": { "type": "boolean" },
+        "result": { "type": "object" },
+        "error": { "$ref": "#/$defs/ErrorShape" }
+      }
+    },
+    "ErrorShape": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "INVALID_REQUEST",
+            "INVALID_STATE",
+            "EDITOR_BUSY",
+            "TIMEOUT",
+            "NOT_FOUND",
+            "INTERNAL",
+            "PROTOCOL_VERSION_MISMATCH"
+          ]
+        },
+        "message": { "type": "string" }
+      }
+    },
+    "NotificationEnvelope": {
+      "type": "object",
+      "required": ["event", "payload", "timestamp"],
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "type": "string",
+          "enum": [
+            "playmode.changed",
+            "log.line",
+            "scene.opened",
+            "selection.changed",
+            "compile.done",
+            "log.overflow"
+          ]
+        },
+        "payload": { "type": "object" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "PlaymodeState": {
+      "type": "string",
+      "enum": ["Editor", "PlayingOrWillChangePlaymode", "Playing", "Paused", "ExitingPlaymode"]
+    },
+    "GameObjectSummary": {
+      "type": "object",
+      "required": ["name", "instanceId", "active", "components", "childCount"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "instanceId": { "type": "integer" },
+        "active": { "type": "boolean" },
+        "components": { "type": "array", "items": { "type": "string" } },
+        "childCount": { "type": "integer" }
+      }
+    },
+    "LogLine": {
+      "type": "object",
+      "required": ["logType", "message", "lineNumber"],
+      "additionalProperties": false,
+      "properties": {
+        "logType": { "type": "string", "enum": ["Log", "Warning", "Error", "Exception", "Assert"] },
+        "message": { "type": "string" },
+        "stackTrace": { "type": "string" },
+        "lineNumber": { "type": "integer" }
+      }
+    },
+    "ComponentDetails": {
+      "type": "object",
+      "required": ["type", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string" },
+        "fields": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "PlaymodeChangedPayload": {
+      "type": "object",
+      "required": ["state"],
+      "additionalProperties": false,
+      "properties": {
+        "state": { "$ref": "#/$defs/PlaymodeState" }
+      }
+    },
+    "LogLinePayload": { "$ref": "#/$defs/LogLine" },
+    "SceneOpenedPayload": {
+      "type": "object",
+      "required": ["sceneName", "scenePath", "mode"],
+      "additionalProperties": false,
+      "properties": {
+        "sceneName": { "type": "string" },
+        "scenePath": { "type": "string" },
+        "mode": { "type": "string", "enum": ["Single", "Additive", "AdditiveWithoutLoading"] }
+      }
+    },
+    "SelectionChangedPayload": {
+      "type": "object",
+      "required": ["instanceIds"],
+      "additionalProperties": false,
+      "properties": {
+        "instanceIds": { "type": "array", "items": { "type": "integer" } },
+        "objectPath": { "type": "string" }
+      }
+    },
+    "CompileDonePayload": {
+      "type": "object",
+      "required": ["success", "durationMs"],
+      "additionalProperties": false,
+      "properties": {
+        "success": { "type": "boolean" },
+        "durationMs": { "type": "number" }
+      }
+    },
+    "LogOverflowPayload": {
+      "type": "object",
+      "required": ["dropped", "since"],
+      "additionalProperties": false,
+      "properties": {
+        "dropped": { "type": "integer", "minimum": 0 },
+        "since": { "type": "string", "format": "date-time" }
+      }
+    },
+    "commands": {
+      "BridgeControl": {
+        "args": {
+          "type": "object",
+          "required": ["action", "authProof"],
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": ["status", "disconnect_client", "restart_listener"]
+            },
+            "authProof": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "expectedBridgeId": { "type": ["string", "null"] },
+            "expectedBridgeInstanceId": { "type": ["string", "null"] },
+            "expectedClientId": { "type": ["string", "null"] },
+            "expectedClientInstanceId": { "type": ["string", "null"] },
+            "expectedConnectionGeneration": { "type": ["integer", "null"] }
+          }
+        },
+        "result": {
+          "type": "object",
+          "description": "Action-specific authenticated bridge management result."
+        }
+      },
+      "BridgeChallenge": {
+        "args": { "type": "object", "additionalProperties": false, "properties": {} },
+        "result": {
+          "type": "object",
+          "required": ["nonce", "challengeRequestId", "bridgeId", "bridgeInstanceId", "serverProof"],
+          "properties": {
+            "nonce": { "type": "string", "minLength": 32 },
+            "challengeRequestId": { "type": "string", "format": "uuid" },
+            "bridgeId": { "type": "string" },
+            "bridgeInstanceId": { "type": "string" },
+            "serverProof": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        }
+      },
+      "Handshake": {
+        "args": {
+          "type": "object",
+          "required": ["clientProtocolVersion", "authProof"],
+          "additionalProperties": false,
+          "properties": {
+            "clientProtocolVersion": { "type": "string" },
+            "clientId": { "type": ["string", "null"] },
+            "clientInstanceId": { "type": ["string", "null"] },
+            "clientProcessId": { "type": ["integer", "null"] },
+            "expectedBridgeId": { "type": ["string", "null"] },
+            "forceTakeover": { "type": ["boolean", "null"] },
+            "authProof": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "expectedBridgeInstanceId": { "type": ["string", "null"] },
+            "expectedConnectionGeneration": { "type": ["integer", "null"] }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": [
+            "serverProtocolVersion",
+            "editorVersion",
+            "projectPath",
+            "bridgeId",
+            "bridgeInstanceId",
+            "listenerProcessId",
+            "listenerPort",
+            "connectionGeneration"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "serverProtocolVersion": { "type": "string" },
+            "editorVersion": { "type": "string" },
+            "projectPath": { "type": "string" },
+            "bridgeId": { "type": ["string", "null"] },
+            "bridgeInstanceId": { "type": ["string", "null"] },
+            "listenerProcessId": { "type": "integer" },
+            "listenerPort": { "type": "integer" },
+            "connectionGeneration": { "type": "integer" },
+            "clientId": { "type": ["string", "null"] },
+            "clientInstanceId": { "type": ["string", "null"] }
+          }
+        }
+      },
+      "EnterPlaymode": {
+        "args": { "type": "object", "additionalProperties": false, "properties": {} },
+        "result": {
+          "type": "object",
+          "required": ["state"],
+          "additionalProperties": false,
+          "properties": { "state": { "$ref": "#/$defs/PlaymodeState" } }
+        }
+      },
+      "ExitPlaymode": {
+        "args": { "type": "object", "additionalProperties": false, "properties": {} },
+        "result": {
+          "type": "object",
+          "required": ["state"],
+          "additionalProperties": false,
+          "properties": { "state": { "$ref": "#/$defs/PlaymodeState" } }
+        }
+      },
+      "RunEditMethod": {
+        "args": {
+          "type": "object",
+          "required": ["typeName", "methodName"],
+          "additionalProperties": false,
+          "properties": {
+            "typeName": { "type": "string" },
+            "methodName": { "type": "string" },
+            "args": { "type": "array", "items": {} }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["capturedLogs"],
+          "additionalProperties": false,
+          "properties": {
+            "returnValue": {},
+            "capturedLogs": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "GetSceneState": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "scene": { "type": "string" } }
+        },
+        "result": {
+          "type": "object",
+          "required": ["rootObjects"],
+          "additionalProperties": false,
+          "properties": {
+            "rootObjects": { "type": "array", "items": { "$ref": "#/$defs/GameObjectSummary" } }
+          }
+        }
+      },
+      "CaptureScreenshot": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "supersize": { "type": "integer", "minimum": 1, "maximum": 4 }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["pngBase64"],
+          "additionalProperties": false,
+          "properties": { "pngBase64": { "type": "string" } }
+        }
+      },
+      "TailEditorLog": {
+        "deprecated": true,
+        "deprecationMessage": "TailEditorLog is deprecated; subscribe to 'log.line' via NotificationEnvelope instead. Will be removed in protocol 1.2.0.",
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sinceLineNumber": { "type": "integer", "minimum": 0 },
+            "maxLines": { "type": "integer", "minimum": 1, "maximum": 10000 }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["lines"],
+          "additionalProperties": false,
+          "properties": {
+            "lines": { "type": "array", "items": { "$ref": "#/$defs/LogLine" } }
+          }
+        }
+      },
+      "QueryGameObject": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "instanceId": { "type": "integer" },
+            "path": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["name", "instanceId", "active", "components"],
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "instanceId": { "type": "integer" },
+            "active": { "type": "boolean" },
+            "components": { "type": "array", "items": { "$ref": "#/$defs/ComponentDetails" } }
+          }
+        }
+      },
+      "OpenScene": {
+        "args": {
+          "type": "object",
+          "required": ["scenePath", "mode"],
+          "additionalProperties": false,
+          "properties": {
+            "scenePath": { "type": "string", "minLength": 1 },
+            "mode": { "type": "string", "enum": ["Single", "Additive", "AdditiveWithoutLoading"] }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["sceneName", "scenePath", "mode", "isLoaded"],
+          "additionalProperties": false,
+          "properties": {
+            "sceneName": { "type": "string" },
+            "scenePath": { "type": "string" },
+            "mode": { "type": "string" },
+            "isLoaded": { "type": "boolean" }
+          }
+        }
+      },
+      "RefreshAssets": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "waitForCompile": { "type": "boolean", "default": true },
+            "timeoutMs": { "type": "integer", "minimum": 1, "default": 30000 }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["refreshed", "compileSucceeded", "durationMs"],
+          "additionalProperties": false,
+          "properties": {
+            "refreshed": { "type": "boolean" },
+            "compileSucceeded": { "type": "boolean" },
+            "durationMs": { "type": "number" }
+          }
+        }
+      },
+      "PingObject": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "instanceId": { "type": "integer" },
+            "path": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["found"],
+          "additionalProperties": false,
+          "properties": {
+            "instanceId": { "type": "integer" },
+            "path": { "type": "string" },
+            "found": { "type": "boolean" }
+          }
+        }
+      },
+      "SetGameViewSize": {
+        "args": {
+          "type": "object",
+          "required": ["width", "height"],
+          "additionalProperties": false,
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["width", "height", "applied"],
+          "additionalProperties": false,
+          "properties": {
+            "width": { "type": "integer" },
+            "height": { "type": "integer" },
+            "applied": { "type": "boolean" }
+          }
+        }
+      },
+      "WaitForIdle": {
+        "args": {
+          "type": "object",
+          "required": ["seconds"],
+          "additionalProperties": false,
+          "properties": {
+            "seconds": { "type": "number", "exclusiveMinimum": 0, "maximum": 120 },
+            "source": { "type": "string", "enum": ["log", "mouse"], "default": "log" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["idleAchieved", "elapsedSeconds"],
+          "additionalProperties": false,
+          "properties": {
+            "idleAchieved": { "type": "boolean" },
+            "elapsedSeconds": { "type": "number" },
+            "lastEventAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      },
+      "LuaReloadModule": {
+        "args": {
+          "type": "object",
+          "required": ["modules"],
+          "additionalProperties": false,
+          "properties": {
+            "modules": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "minItems": 1
+            },
+            "imp_files": { "type": "array", "items": { "type": "string" } },
+            "del_key_models": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["ok", "reloaded"],
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "boolean" },
+            "reloaded": { "type": "array", "items": { "type": "string" } },
+            "error": { "type": "string" }
+          }
+        }
+      },
+      "CsharpReloadScripts": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "force": { "type": "boolean", "default": false }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["reload_id", "force_was_used"],
+          "additionalProperties": false,
+          "properties": {
+            "reload_id": { "type": "string" },
+            "force_was_used": { "type": "boolean" }
+          }
+        }
+      },
+      "GetPlayState": {
+        "args": { "type": "object", "additionalProperties": false, "properties": {} },
+        "result": {
+          "type": "object",
+          "required": ["state"],
+          "additionalProperties": false,
+          "properties": {
+            "state": { "type": "string", "enum": ["EditMode", "PlayMode", "Paused"] }
+          }
+        }
+      },
+      "GetCompileStatus": {
+        "args": { "type": "object", "additionalProperties": false, "properties": {} },
+        "result": {
+          "type": "object",
+          "required": ["hasErrors", "errors"],
+          "additionalProperties": false,
+          "properties": {
+            "hasErrors": { "type": "boolean" },
+            "errors": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      "LuaEval": {
+        "args": {
+          "type": "object",
+          "required": ["script"],
+          "additionalProperties": false,
+          "properties": {
+            "script": { "type": "string", "minLength": 1 },
+            "chunkName": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["ok", "returnCount", "returnValues"],
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "boolean" },
+            "returnCount": { "type": "integer", "minimum": 0 },
+            "returnValues": { "type": "array", "items": { "type": ["string", "null"] } },
+            "raw": { "type": ["string", "null"] }
+          }
+        }
+      },
+      "StartVerificationSession": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "note": { "type": "string" },
+            "pauseSilenceMs": { "type": "integer", "minimum": 1 },
+            "abortOnHigh": { "type": "boolean", "default": true },
+            "gateScreenshots": { "type": "boolean", "default": true }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["sessionId", "started"],
+          "additionalProperties": false,
+          "properties": {
+            "sessionId": { "type": "string" },
+            "started": { "type": "boolean" }
+          }
+        }
+      },
+      "EndVerificationSession": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sessionId": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["ended", "lowEvents", "highEvents"],
+          "additionalProperties": false,
+          "properties": {
+            "ended": { "type": "boolean" },
+            "lowEvents": { "type": "integer", "minimum": 0 },
+            "highEvents": { "type": "integer", "minimum": 0 }
+          }
+        }
+      },
+      "ListUINodes": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "panelUid": { "type": "integer" },
+            "layers": { "type": "array", "items": { "type": "string", "enum": ["PROJECT_PANEL_LAYER", "PROJECT_POPUP_LAYER", "PROJECT_INFO_LAYER", "PROJECT_SCENE_LAYER"] } },
+            "includeAll": { "type": "boolean", "default": false },
+            "maxNodes": { "type": "integer", "minimum": 1 },
+            "pathPrefix": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["gameViewWidth", "gameViewHeight", "nodeCount", "nodes"],
+          "additionalProperties": false,
+          "properties": {
+            "gameViewWidth": { "type": "integer" },
+            "gameViewHeight": { "type": "integer" },
+            "nodeCount": { "type": "integer", "minimum": 0 },
+            "nodes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["index", "instanceId", "panelUid", "layer", "name", "path", "type", "visible", "clickable", "screenX", "screenY", "screenW", "screenH"],
+                "additionalProperties": false,
+                "properties": {
+                  "index": { "type": "integer" },
+                  "instanceId": { "type": "integer" },
+                  "panelUid": { "type": "integer" },
+                  "layer": { "type": "string" },
+                  "name": { "type": "string" },
+                  "path": { "type": "string" },
+                  "type": { "type": "string" },
+                  "text": { "type": "string" },
+                  "textId": { "type": "string" },
+                  "visible": { "type": "boolean" },
+                  "clickable": { "type": "boolean" },
+                  "screenX": { "type": "number" },
+                  "screenY": { "type": "number" },
+                  "screenW": { "type": "number" },
+                  "screenH": { "type": "number" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "ResolveLocalization": {
+        "args": {
+          "type": "object",
+          "required": ["ids"],
+          "additionalProperties": false,
+          "properties": {
+            "ids": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+            "language": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["language", "entries"],
+          "additionalProperties": false,
+          "properties": {
+            "language": { "type": "string" },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id"],
+                "additionalProperties": false,
+                "properties": {
+                  "id": { "type": "integer" },
+                  "text": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "OpenPanel": {
+        "args": {
+          "type": "object",
+          "required": ["uid"],
+          "additionalProperties": false,
+          "properties": {
+            "uid": { "type": "integer" },
+            "info": { "type": "object" },
+            "timeoutMs": { "type": "integer", "minimum": 1 },
+            "verify": { "type": "boolean", "default": true }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["uid", "opened", "visible", "isOpen", "topPanelUid", "timedOut", "refused", "elapsedMs"],
+          "additionalProperties": false,
+          "properties": {
+            "uid": { "type": "integer" },
+            "opened": { "type": "boolean" },
+            "visible": { "type": "boolean" },
+            "isOpen": { "type": "boolean" },
+            "topPanelUid": { "type": "integer" },
+            "timedOut": { "type": "boolean" },
+            "refused": { "type": "boolean" },
+            "elapsedMs": { "type": "number" }
+          }
+        }
+      },
+      "SimulateClick": {
+        "args": {
+          "type": "object",
+          "required": ["panelUid"],
+          "additionalProperties": false,
+          "properties": {
+            "panelUid": { "type": "integer" },
+            "refKey": { "type": "string" },
+            "path": { "type": "string" },
+            "mode": { "type": "string", "enum": ["raycast", "force"], "default": "raycast" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["clicked", "mode", "nodeFound"],
+          "additionalProperties": false,
+          "properties": {
+            "clicked": { "type": "boolean" },
+            "mode": { "type": "string" },
+            "nodeFound": { "type": "boolean" },
+            "note": { "type": "string" }
+          }
+        }
+      },
+      "SimulateKey": {
+        "args": {
+          "type": "object",
+          "required": ["actionPath"],
+          "additionalProperties": false,
+          "properties": {
+            "actionPath": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["triggered", "actionPath"],
+          "additionalProperties": false,
+          "properties": {
+            "triggered": { "type": "boolean" },
+            "actionPath": { "type": "string" },
+            "note": { "type": "string" }
+          }
+        }
+      },
+      "SetInputText": {
+        "args": {
+          "type": "object",
+          "required": ["panelUid", "text"],
+          "additionalProperties": false,
+          "properties": {
+            "panelUid": { "type": "integer" },
+            "refKey": { "type": "string" },
+            "path": { "type": "string" },
+            "text": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["applied", "nodeFound"],
+          "additionalProperties": false,
+          "properties": {
+            "applied": { "type": "boolean" },
+            "nodeFound": { "type": "boolean" },
+            "note": { "type": "string" }
+          }
+        }
+      },
+      "GetVerificationSessionState": {
+        "args": { "type": "object", "additionalProperties": false, "properties": {} },
+        "result": {
+          "type": "object",
+          "required": ["armed", "autoStarted", "gateScreenshots"],
+          "additionalProperties": false,
+          "properties": {
+            "armed": { "type": "boolean" },
+            "sessionId": { "type": "string" },
+            "autoStarted": { "type": "boolean" },
+            "gateScreenshots": { "type": "boolean" }
+          }
+        }
+      },
+      "ObserveCamera": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "targetPos": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["ok"],
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "boolean" },
+            "data": { "type": "object" },
+            "note": { "type": "string" }
+          }
+        }
+      },
+      "ListEntities": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "actorType": { "type": "string" },
+            "className": { "type": "string" },
+            "templateId": { "type": "integer" },
+            "summary": { "type": "boolean" },
+            "maxEntities": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["ok"],
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "boolean" },
+            "data": { "type": "object" },
+            "note": { "type": "string" }
+          }
+        }
+      },
+      "ObserveEntity": {
+        "args": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string" },
+            "actorId": { "type": "integer" },
+            "templateId": { "type": "integer" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["ok"],
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "boolean" },
+            "data": { "type": "object" },
+            "note": { "type": "string" }
+          }
+        }
+      },
+      "ListEffects": {
+        "args": { "type": "object", "additionalProperties": false, "properties": {} },
+        "result": {
+          "type": "object",
+          "required": ["ok"],
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "boolean" },
+            "data": { "type": "object" },
+            "note": { "type": "string" }
+          }
+        }
+      },
+      "ObserveEffect": {
+        "args": {
+          "type": "object",
+          "required": ["generatorId", "effectId"],
+          "additionalProperties": false,
+          "properties": {
+            "generatorId": { "type": "integer" },
+            "effectId": { "type": "integer" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["ok"],
+          "additionalProperties": false,
+          "properties": {
+            "ok": { "type": "boolean" },
+            "data": { "type": "object" },
+            "note": { "type": "string" }
+          }
+        }
+      },
+      "ObserveWindow": {
+        "args": {
+          "type": "object",
+          "required": ["luaExpr"],
+          "additionalProperties": false,
+          "properties": {
+            "luaExpr": { "type": "string", "minLength": 1 },
+            "intervalMs": { "type": "integer", "minimum": 1 },
+            "durationMs": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["everTrue", "sampleCount", "elapsedMs", "samples"],
+          "additionalProperties": false,
+          "properties": {
+            "everTrue": { "type": "boolean" },
+            "firstTrueMs": { "type": "number" },
+            "lastTrueMs": { "type": "number" },
+            "peak": { "type": "number" },
+            "sampleCount": { "type": "integer" },
+            "validSampleCount": { "type": "integer" },
+            "exprError": { "type": "string" },
+            "elapsedMs": { "type": "number" },
+            "samples": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["t", "value"],
+                "additionalProperties": false,
+                "properties": {
+                  "t": { "type": "number" },
+                  "value": { "type": "number" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "OperateCamera": {
+        "args": {
+          "type": "object",
+          "required": ["action"],
+          "additionalProperties": false,
+          "properties": {
+            "action": { "type": "string", "enum": ["zoom", "setTimeScale", "setWorldCameraEnable", "enablePhoto", "setTargetPlayer", "focus"] },
+            "value": { "type": "number" },
+            "actorId": { "type": "integer" },
+            "flag": { "type": "boolean" },
+            "settleMs": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "result": {
+          "type": "object",
+          "required": ["action", "applied"],
+          "additionalProperties": false,
+          "properties": {
+            "action": { "type": "string" },
+            "applied": { "type": "boolean" },
+            "before": { "type": "object" },
+            "after": { "type": "object" },
+            "note": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

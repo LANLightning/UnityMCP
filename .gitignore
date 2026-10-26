@@ -1,0 +1,30 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.pytest-tmp/
+.superpowers/
+smoke_*.out
+build/
+.venv/
+.vscode/
+*.7z
+*.zip
+# dist/ holds build artifacts (sdist + wheel + bridge tgz); not tracked.
+dist/
+
+# Private workspace state and runtime evidence
+.claude/
+.codex/
+.ruff_cache/
+.coverage*
+coverage*.json
+htmlcov/
+.env
+.env.*
+!.env.example
+auth-token
+bridge_bindings.json
+sessions/
+screenshots/
+*.jsonl

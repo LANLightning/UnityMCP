@@ -1,0 +1,68 @@
+[project]
+name = "unity-mcp-py"
+version = "0.10.0"
+description = "Python MCP server for Unity Editor — 41 default tools plus an optional profiler with runtime-evidence correction loop, write-op pairing, no-human UI verification layer (node inventory + localization), server-side assertion verdicts, per-tool telemetry, and recorder/replay"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Lance Lan" },
+]
+keywords = ["mcp", "unity", "claude", "ai-agent", "game-development"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Code Generators",
+  "Topic :: Games/Entertainment",
+]
+dependencies = [
+  "mcp>=1.0.0,<2",
+  "anyio>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.6",
+  "build>=1.0",
+]
+
+[project.urls]
+Documentation = "https://github.com/LANLightning/UnityMCP#readme"
+Issues = "https://github.com/LANLightning/UnityMCP/issues"
+Source = "https://github.com/LANLightning/UnityMCP"
+
+[project.scripts]
+unity-mcp-py = "unity_mcp_py.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unity_mcp_py"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/unity_mcp_py",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+  "docs/USAGE.md",
+  "tests",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "scripts"]
+asyncio_mode = "auto"
+testpaths = ["tests"]

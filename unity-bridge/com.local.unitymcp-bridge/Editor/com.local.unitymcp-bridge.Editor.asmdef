@@ -1,0 +1,7 @@
+{
+  "name": "com.local.unitymcp-bridge.Editor",
+  "rootNamespace": "UnityMCP.Bridge",
+  "references": ["Newtonsoft.Json", "Unity.EditorCoroutines.Editor", "Unity.InputSystem"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

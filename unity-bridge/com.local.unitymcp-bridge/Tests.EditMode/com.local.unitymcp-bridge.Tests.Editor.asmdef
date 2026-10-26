@@ -1,0 +1,12 @@
+{
+  "name": "com.local.unitymcp-bridge.Tests.Editor",
+  "rootNamespace": "UnityMCP.Bridge.Tests",
+  "references": [
+    "com.local.unitymcp-bridge.Editor",
+    "Newtonsoft.Json",
+    "UnityEditor.TestRunner",
+    "UnityEngine.TestRunner"
+  ],
+  "includePlatforms": ["Editor"],
+  "defineConstraints": ["UNITY_TEST_FRAMEWORK_AVAILABLE"]
+}

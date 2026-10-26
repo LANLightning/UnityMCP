@@ -1,0 +1,15 @@
+{
+  "name": "com.local.unitymcp-bridge",
+  "version": "0.8.0",
+  "displayName": "UnityMCP Bridge",
+  "description": "Editor-side TCP bridge that exposes Unity automation to MCP clients (Claude Code, etc.). Paired with the unity-mcp-py Python MCP server (https://pypi.org/project/unity-mcp-py/).",
+  "unity": "2022.3",
+  "author": { "name": "Lance Lan", "email": "noreply@local" },
+  "license": "MIT",
+  "keywords": ["mcp", "claude", "ai-agent", "automation", "editor"],
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1",
+    "com.unity.editorcoroutines": "1.0.0",
+    "com.unity.inputsystem": "1.7.0"
+  }
+}
